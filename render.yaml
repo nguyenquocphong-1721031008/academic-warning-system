@@ -1,0 +1,44 @@
+services:
+  - type: web
+    name: academic-warning-backend
+    env: docker
+    plan: free
+    autoDeploy: true
+    healthCheckPath: /health
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: SECRET_KEY
+        sync: false
+      - key: ALGORITHM
+        value: HS256
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "43200"
+      - key: REFRESH_TOKEN_EXPIRE_DAYS
+        value: "30"
+      - key: SUPPORT_PHONE
+        value: "0362629326"
+      - key: CORS_ALLOW_ORIGINS
+        value: '["https://your-frontend-domain.com"]'
+      - key: CORS_ALLOW_CREDENTIALS
+        value: "true"
+      - key: CORS_ALLOW_METHODS
+        value: '["GET","POST","PUT","PATCH","DELETE","OPTIONS"]'
+      - key: CORS_ALLOW_HEADERS
+        value: '["Authorization","Content-Type"]'
+      - key: TRUSTED_HOSTS
+        value: '["academic-warning-backend.onrender.com"]'
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_USE_TLS
+        value: "true"
+      - key: SMTP_FROM_EMAIL
+        sync: false
