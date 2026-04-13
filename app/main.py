@@ -58,6 +58,11 @@ if (
 ):
     raise RuntimeError("SECRET_KEY must be set in production environment")
 
+trusted_hosts = set(_settings.trusted_hosts)
+render_external_hostname = os.getenv("RENDER_EXTERNAL_HOSTNAME")
+if render_external_hostname:
+    trusted_hosts.add(render_external_hostname)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=list(_settings.cors_allow_origins),
@@ -65,7 +70,7 @@ app.add_middleware(
     allow_methods=list(_settings.cors_allow_methods),
     allow_headers=list(_settings.cors_allow_headers),
 )
-app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(_settings.trusted_hosts))
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=sorted(trusted_hosts))
 
 
 @app.middleware("http")
