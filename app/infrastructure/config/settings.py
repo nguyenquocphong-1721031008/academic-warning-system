@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -45,6 +47,34 @@ class Settings(BaseSettings):
     smtp_password: str | None = None
     smtp_use_tls: bool = False
     smtp_from_email: str = "no-reply@academic-warning-system.local"
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def normalize_database_url(cls, value: str) -> str:
+        if not isinstance(value, str):
+            return value
+
+        db_url = value.strip()
+        if db_url.startswith("postgres://"):
+            db_url = db_url.replace("postgres://", "postgresql://", 1)
+
+        parsed = urlparse(db_url)
+        if parsed.scheme == "postgresql" and "onrender.com" in (parsed.hostname or ""):
+            query_params = dict(parse_qsl(parsed.query, keep_blank_values=True))
+            if "sslmode" not in query_params:
+                query_params["sslmode"] = "require"
+                db_url = urlunparse(
+                    (
+                        parsed.scheme,
+                        parsed.netloc,
+                        parsed.path,
+                        parsed.params,
+                        urlencode(query_params),
+                        parsed.fragment,
+                    )
+                )
+
+        return db_url
 
 
 @lru_cache

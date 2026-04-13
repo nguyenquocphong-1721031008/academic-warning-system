@@ -62,6 +62,9 @@ trusted_hosts = set(_settings.trusted_hosts)
 render_external_hostname = os.getenv("RENDER_EXTERNAL_HOSTNAME")
 if render_external_hostname:
     trusted_hosts.add(render_external_hostname)
+# Fallback for Render deployments when RENDER_EXTERNAL_HOSTNAME
+# is not injected into the service environment.
+trusted_hosts.add("*.onrender.com")
 
 app.add_middleware(
     CORSMiddleware,

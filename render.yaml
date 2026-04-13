@@ -29,7 +29,7 @@ services:
       - key: CORS_ALLOW_HEADERS
         value: '["Authorization","Content-Type"]'
       - key: TRUSTED_HOSTS
-        value: '["academic-warning-backend.onrender.com"]'
+        value: '["academic-warning-system.onrender.com"]'
       - key: SMTP_HOST
         sync: false
       - key: SMTP_PORT
