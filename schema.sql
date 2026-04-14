@@ -213,6 +213,7 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash TEXT NOT NULL,
     role user_role_type NOT NULL,
     faculty_id UUID NULL REFERENCES faculties(id) ON DELETE SET NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ NULL
 );
 CREATE INDEX IF NOT EXISTS ix_users_username ON users (username);

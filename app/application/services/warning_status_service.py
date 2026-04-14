@@ -73,7 +73,7 @@ class WarningStatusService:
         return PublicWarningResponseDTO(
             student_code=internal_eval["student_code"],
             has_warning=has_w,
-            warning_level=tier,  # type: ignore[arg-type]
+            warning_level=tier,
             message_vi=_public_message_vi(has_w, tier, has_stats=has_stats),
             support_phone=self._support_phone,
         )
@@ -202,7 +202,7 @@ class WarningStatusService:
             cumulative_gpa=cg,
             warnings=warning_items,
             violations=violations,
-            warning_level=tier,  # type: ignore[arg-type]
+            warning_level=tier,
         )
 
     def _tier_from_eval(self, internal_eval: dict) -> tuple[bool, str]:

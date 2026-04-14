@@ -9,6 +9,8 @@ from sqlalchemy.orm import Session
 
 from app.api.rate_limit import SlidingWindowLimiter, client_ip
 from app.api.schemas.response import success_response
+from app.application.dto.user_dto import ResetPasswordDTO
+from app.application.use_cases.admin.manage_users import ResetPasswordUseCase
 from app.domain.entities.user import User
 from app.infrastructure.config.settings import get_settings
 from app.infrastructure.database.repositories.user_repository_impl import (
@@ -56,6 +58,10 @@ def get_current_user(
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found"
+        )
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="User account is inactive"
         )
     return user
 
@@ -146,6 +152,10 @@ def login(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
         )
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="User account is inactive"
+        )
 
     access_token = create_access_token(
         data={
@@ -167,6 +177,7 @@ def login(
                 "username": user.username,
                 "role": user.role,
                 "faculty_id": str(user.faculty_id) if user.faculty_id else None,
+                "is_active": user.is_active,
             },
         },
         message_vi="Đăng nhập thành công",
@@ -189,6 +200,10 @@ def refresh_token(payload: RefreshTokenRequest, db: Session = Depends(get_db)):
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found"
+        )
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="User account is inactive"
         )
 
     access_token = create_access_token(
@@ -239,7 +254,42 @@ def get_current_user_info(current_user: User = Depends(get_current_user)):
             "faculty_id": str(current_user.faculty_id)
             if current_user.faculty_id
             else None,
+            "is_active": current_user.is_active,
         },
         message_vi="OK",
         message_en="OK",
+    )
+
+
+@router.post("/users/{user_id}/reset-password")
+def reset_user_password(
+    user_id: str,
+    password_data: ResetPasswordDTO,
+    current_user: User = Depends(get_current_admin_or_faculty_manager),
+    db: Session = Depends(get_db),
+):
+    user_repo = UserRepositoryImpl(db)
+    target_user = user_repo.get_by_id(user_id)
+    if target_user is None:
+        raise HTTPException(status_code=404, detail="Không tìm thấy người dùng")
+
+    if current_user.is_faculty_manager():
+        same_user = current_user.id == target_user.id
+        same_faculty_manager = (
+            target_user.role == "faculty_manager"
+            and current_user.faculty_id is not None
+            and current_user.faculty_id == target_user.faculty_id
+        )
+        if not (same_user or same_faculty_manager):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Bạn không có quyền đặt lại mật khẩu người dùng này",
+            )
+
+    usecase = ResetPasswordUseCase(user_repo)
+    usecase.execute(user_id, password_data.new_password)
+    return success_response(
+        data=None,
+        message_vi="Đặt lại mật khẩu thành công",
+        message_en="Password reset successfully",
     )

@@ -15,7 +15,10 @@ from app.infrastructure.email_service import (
 )
 from app.api.schemas.response import success_response
 from app.application.dto.faculty_dto import FacultyCreateDTO, FacultyUpdateDTO
-from app.application.dto.user_dto import ResetPasswordDTO, UserCreateDTO
+from app.application.dto.user_dto import (
+    UpdateUserStatusDTO,
+    UserCreateDTO,
+)
 from app.application.dto.warning_rule_dto import (
     WarningRuleCreateDTO,
     WarningRuleSetCreateDTO,
@@ -30,9 +33,8 @@ from app.application.use_cases.admin.manage_faculties import (
 )
 from app.application.use_cases.admin.manage_users import (
     CreateUserUseCase,
-    DeleteUserUseCase,
     GetUsersUseCase,
-    ResetPasswordUseCase,
+    UpdateUserStatusUseCase,
 )
 from app.application.use_cases.admin.manage_warning_rules import (
     CreateWarningRuleSetUseCase,
@@ -107,36 +109,20 @@ def get_users(
     )
 
 
-@router.delete("/users/{user_id}")
-def delete_user(
+@router.patch("/users/{user_id}/status")
+def update_user_status(
     user_id: UserIdPath,
+    payload: UpdateUserStatusDTO,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_admin),
 ):
     user_repo = UserRepositoryImpl(db)
-    usecase = DeleteUserUseCase(user_repo)
-    usecase.execute(user_id)
+    usecase = UpdateUserStatusUseCase(user_repo)
+    usecase.execute(user_id, payload.is_active)
     return success_response(
         data=None,
-        message_vi="Đã xóa người dùng",
-        message_en="User deleted",
-    )
-
-
-@router.post("/users/{user_id}/reset-password")
-def reset_password(
-    user_id: UserIdPath,
-    password_data: ResetPasswordDTO,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_admin),
-):
-    user_repo = UserRepositoryImpl(db)
-    usecase = ResetPasswordUseCase(user_repo)
-    usecase.execute(user_id, password_data.new_password)
-    return success_response(
-        data=None,
-        message_vi="Đặt lại mật khẩu thành công",
-        message_en="Password reset successfully",
+        message_vi="Đã cập nhật trạng thái người dùng",
+        message_en="User status updated",
     )
 
 

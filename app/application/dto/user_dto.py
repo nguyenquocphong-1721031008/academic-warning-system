@@ -20,7 +20,12 @@ class UserResponseDTO(BaseModel):
     username: str
     role: str
     faculty_id: Optional[str] = None
+    is_active: bool = True
 
 
 class ResetPasswordDTO(BaseModel):
     new_password: str
+
+
+class UpdateUserStatusDTO(BaseModel):
+    is_active: bool

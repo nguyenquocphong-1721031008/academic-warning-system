@@ -12,6 +12,7 @@ class User:
         faculty_id: Optional[str] = None,
         student_id: Optional[str] = None,
         created_at: Optional[datetime] = None,
+        is_active: bool = True,
     ):
         self.id = id
         self.username = username
@@ -20,6 +21,7 @@ class User:
         self.faculty_id = faculty_id
         self.student_id = student_id
         self.created_at = created_at or datetime.now()
+        self.is_active = is_active
 
     def is_admin(self) -> bool:
         return self.role == "admin"

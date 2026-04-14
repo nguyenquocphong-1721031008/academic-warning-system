@@ -43,6 +43,7 @@ class CreateUserUseCase:
             role=created_user.role,
             faculty_id=created_user.faculty_id,
             student_id=created_user.student_id,
+            is_active=created_user.is_active,
         )
 
 
@@ -82,6 +83,7 @@ class UpdateUserUseCase:
             role=updated_user.role,
             faculty_id=updated_user.faculty_id,
             student_id=updated_user.student_id,
+            is_active=updated_user.is_active,
         )
 
 
@@ -111,6 +113,7 @@ class GetUsersUseCase:
                 role=user.role,
                 faculty_id=user.faculty_id,
                 student_id=user.student_id,
+                is_active=user.is_active,
             )
             for user in users
         ]
@@ -127,3 +130,14 @@ class ResetPasswordUseCase:
 
         new_password_hash = get_password_hash(new_password)
         return self.user_repo.update_password(user_id, new_password_hash)
+
+
+class UpdateUserStatusUseCase:
+    def __init__(self, user_repo: UserRepository):
+        self.user_repo = user_repo
+
+    def execute(self, user_id: str, is_active: bool) -> bool:
+        user = self.user_repo.get_by_id(user_id)
+        if not user:
+            raise ValueError(f"User {user_id} not found")
+        return self.user_repo.update_status(user_id, is_active)

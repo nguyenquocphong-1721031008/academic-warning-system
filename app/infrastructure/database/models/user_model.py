@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, ForeignKey, Enum as SQLEnum
+from sqlalchemy import Boolean, Column, String, ForeignKey, Enum as SQLEnum
 from app.infrastructure.database.base import Base
 import uuid
 
@@ -18,4 +18,5 @@ class UserModel(Base):
         String, ForeignKey("faculties.id", ondelete="SET NULL"), nullable=True
     )
 
+    is_active = Column(Boolean, nullable=False, default=True)
     created_at = Column(String, nullable=True)

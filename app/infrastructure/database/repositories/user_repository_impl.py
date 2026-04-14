@@ -13,7 +13,7 @@ class UserRepositoryImpl(UserRepository):
     def get_by_username(self, username: str) -> Optional[User]:
         result = self.db.execute(
             text("""
-                SELECT id, username, password_hash, role, faculty_id, created_at
+                SELECT id, username, password_hash, role, faculty_id, created_at, is_active
                 FROM users
                 WHERE username = :username
             """),
@@ -30,12 +30,13 @@ class UserRepositoryImpl(UserRepository):
             role=str(result[3]),
             faculty_id=str(result[4]) if result[4] else None,
             created_at=result[5] if result[5] else datetime.now(),
+            is_active=bool(result[6]),
         )
 
     def get_by_id(self, user_id: str) -> Optional[User]:
         result = self.db.execute(
             text("""
-                SELECT id, username, password_hash, role, faculty_id, created_at
+                SELECT id, username, password_hash, role, faculty_id, created_at, is_active
                 FROM users
                 WHERE id = :id
             """),
@@ -52,13 +53,14 @@ class UserRepositoryImpl(UserRepository):
             role=str(result[3]),
             faculty_id=str(result[4]) if result[4] else None,
             created_at=result[5] if result[5] else datetime.now(),
+            is_active=bool(result[6]),
         )
 
     def create(self, user: User) -> User:
         user_id = self.db.execute(
             text("""
-                INSERT INTO users (id, username, password_hash, role, faculty_id, created_at)
-                VALUES (:id, :username, :password_hash, :role, :faculty_id, :created_at)
+                INSERT INTO users (id, username, password_hash, role, faculty_id, created_at, is_active)
+                VALUES (:id, :username, :password_hash, :role, :faculty_id, :created_at, :is_active)
                 RETURNING id
             """),
             {
@@ -68,6 +70,7 @@ class UserRepositoryImpl(UserRepository):
                 "role": user.role,
                 "faculty_id": user.faculty_id,
                 "created_at": user.created_at,
+                "is_active": user.is_active,
             },
         ).scalar()
 
@@ -94,20 +97,12 @@ class UserRepositoryImpl(UserRepository):
         return self.get_by_id(user.id)
 
     def delete(self, user_id: str) -> bool:
-        result = self.db.execute(
-            text("""
-                DELETE FROM users
-                WHERE id = :id
-            """),
-            {"id": user_id},
-        )
-        self.db.commit()
-        return result.rowcount > 0
+        return self.update_status(user_id, False)
 
     def get_all(self, skip: int = 0, limit: int = 100) -> List[User]:
         results = self.db.execute(
             text("""
-                SELECT id, username, password_hash, role, faculty_id, created_at
+                SELECT id, username, password_hash, role, faculty_id, created_at, is_active
                 FROM users
                 ORDER BY created_at DESC
                 LIMIT :limit OFFSET :skip
@@ -123,6 +118,7 @@ class UserRepositoryImpl(UserRepository):
                 role=str(row[3]),
                 faculty_id=str(row[4]) if row[4] else None,
                 created_at=row[5] if row[5] else datetime.now(),
+                is_active=bool(row[6]),
             )
             for row in results
         ]
@@ -135,6 +131,18 @@ class UserRepositoryImpl(UserRepository):
                 WHERE id = :id
             """),
             {"id": user_id, "password_hash": new_password_hash},
+        )
+        self.db.commit()
+        return result.rowcount > 0
+
+    def update_status(self, user_id: str, is_active: bool) -> bool:
+        result = self.db.execute(
+            text("""
+                UPDATE users
+                SET is_active = :is_active
+                WHERE id = :id
+            """),
+            {"id": user_id, "is_active": is_active},
         )
         self.db.commit()
         return result.rowcount > 0

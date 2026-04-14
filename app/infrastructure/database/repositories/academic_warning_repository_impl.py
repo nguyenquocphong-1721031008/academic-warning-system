@@ -266,6 +266,7 @@ class AcademicWarningRepositoryImpl(AcademicWarningRepository):
                     aw.created_at,
                     s.student_code,
                     s.last_name || ' ' || s.first_name AS full_name,
+                    s.date_of_birth,
                     c.class_code,
                     m.faculty_id
                 FROM academic_warnings aw
@@ -300,8 +301,9 @@ class AcademicWarningRepositoryImpl(AcademicWarningRepository):
                 "created_at": row[15].isoformat() if row[15] else None,
                 "student_code": str(row[16]),
                 "full_name": str(row[17]),
-                "class_code": str(row[18]) if row[18] else None,
-                "faculty_id": str(row[19]) if row[19] else None,
+                "date_of_birth": row[18].isoformat() if row[18] else None,
+                "class_code": str(row[19]) if row[19] else None,
+                "faculty_id": str(row[20]) if row[20] else None,
             }
             for row in results
         ]

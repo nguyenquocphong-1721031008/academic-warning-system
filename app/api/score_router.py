@@ -11,8 +11,8 @@ from app.infrastructure.database.session import get_db
 
 router = APIRouter(prefix="/scores", tags=["scores"])
 _ALLOWED_CONTENT_TYPES = {
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",  # .xlsx
-    "application/vnd.ms-excel",  # some clients
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-excel",
 }
 
 

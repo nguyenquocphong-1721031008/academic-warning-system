@@ -1,7 +1,9 @@
 from typing import Annotated, Optional
 
+import csv
 import io
 import logging
+import pandas as pd
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from fastapi.responses import StreamingResponse
@@ -140,10 +142,11 @@ def export_warnings_csv(
         size=200000,
     )
 
-    output = io.StringIO()
+    output = io.StringIO(newline="")
     header = [
         "student_code",
         "full_name",
+        "date_of_birth",
         "class_code",
         "faculty_id",
         "semester_name",
@@ -157,16 +160,77 @@ def export_warnings_csv(
         "warning_reason",
         "created_at",
     ]
-    output.write(",".join(header) + "\n")
+    writer = csv.DictWriter(
+        output,
+        fieldnames=header,
+        extrasaction="ignore",
+    )
+    writer.writeheader()
     for row in rows:
-        line = ",".join(str(row.get(col, "")) for col in header)
-        output.write(line + "\n")
+        writer.writerow({col: row.get(col, "") for col in header})
 
+    csv_content = "\ufeff" + output.getvalue()
+    bytes_buffer = io.BytesIO(csv_content.encode("utf-8"))
+    bytes_buffer.seek(0)
+    return StreamingResponse(
+        bytes_buffer,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": "attachment; filename=warnings.csv"},
+    )
+
+
+@router.get("/export-xlsx")
+def export_warnings_xlsx(
+    faculty_id: Optional[str] = None,
+    class_id: Optional[str] = None,
+    semester_id: Optional[str] = None,
+    current_user: Optional[User] = Depends(get_optional_user),
+    db: Session = Depends(get_db),
+):
+    if not is_internal_warning_viewer(current_user):
+        raise HTTPException(
+            status_code=403, detail="Chỉ nội bộ mới export được dữ liệu"
+        )
+
+    effective_faculty_id = _effective_faculty_scope(current_user, faculty_id)
+    repo = AcademicWarningRepositoryImpl(db)
+    rows = repo.list_filtered(
+        effective_faculty_id,
+        class_id,
+        semester_id,
+        page=1,
+        size=200000,
+    )
+
+    header = [
+        "student_code",
+        "full_name",
+        "date_of_birth",
+        "class_code",
+        "faculty_id",
+        "semester_name",
+        "academic_year",
+        "warning_level",
+        "total_subjects",
+        "total_failed",
+        "fail_ratio",
+        "semester_gpa",
+        "cumulative_gpa",
+        "warning_reason",
+        "created_at",
+    ]
+    table_rows = [{col: row.get(col, "") for col in header} for row in rows]
+    df = pd.DataFrame(table_rows, columns=header)
+
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name="warnings")
     output.seek(0)
+
     return StreamingResponse(
         output,
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=warnings.csv"},
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=warnings.xlsx"},
     )
 
 

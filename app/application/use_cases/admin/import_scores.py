@@ -1,6 +1,8 @@
 from sqlalchemy import text
 import logging
 import pandas as pd
+import re
+from datetime import date, datetime
 from uuid import UUID
 from typing import Dict, Any
 
@@ -23,8 +25,13 @@ class ImportScoresUseCase:
             "mã sinh viên": "student_code",
             "họ đệm": "last_name",
             "tên": "first_name",
+            "họ và tên": "full_name",
+            "full name": "full_name",
             "tên lớp": "class_code",
             "giới tính": "gender",
+            "ngày sinh": "date_of_birth",
+            "ngay sinh": "date_of_birth",
+            "date of birth": "date_of_birth",
             "tên môn học": "subject_name",
             "số tín chỉ": "credits",
             "mã lớp học phần": "section_code",
@@ -34,14 +41,17 @@ class ImportScoresUseCase:
             "điểm 4": "score4",
             "điểm chữ": "letter",
             "học kỳ": "semester_name",
+            "tên đợt": "semester_name",
             "năm học": "academic_year",
         }
         df = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
+        df = self._normalize_import_columns(df)
 
         caches = self._load_caches()
 
         inserted_count = 0
         scores_batch = []
+        imported_enrollment_year_by_student: dict[str, int] = {}
 
         for row in df.itertuples(index=False):
             if pd.isna(row.student_code) or not str(row.student_code).strip():
@@ -68,10 +78,19 @@ class ImportScoresUseCase:
                 data["last_name"],
                 data["first_name"],
                 data["gender"],
+                data["date_of_birth"],
                 class_id,
                 data["enrollment_year"],
                 caches["students"],
             )
+            existing_year = imported_enrollment_year_by_student.get(student_id)
+            if existing_year is None:
+                imported_enrollment_year_by_student[student_id] = data["enrollment_year"]
+            else:
+                imported_enrollment_year_by_student[student_id] = min(
+                    existing_year,
+                    data["enrollment_year"],
+                )
             subject_id = self._get_or_create_subject(
                 data["subject_name"], data["credits"], faculty_id, caches["subjects"]
             )
@@ -101,6 +120,11 @@ class ImportScoresUseCase:
         if scores_batch:
             self._bulk_insert_scores(scores_batch)
 
+        if imported_enrollment_year_by_student:
+            self._sync_enrollment_year_from_import(
+                imported_enrollment_year_by_student
+            )
+
         if inserted_count > 0:
             self.db.commit()
             self.recalculate_all_stats_and_warnings()
@@ -111,6 +135,20 @@ class ImportScoresUseCase:
 
         return inserted_count
 
+    def _normalize_import_columns(self, df: pd.DataFrame) -> pd.DataFrame:
+        normalized_map = {}
+        for col in df.columns:
+            clean = re.sub(r"[^a-z0-9]+", "", str(col).lower())
+            if clean in {"namhoc", "academicyear", "year"}:
+                normalized_map[col] = "academic_year"
+            elif clean in {"tendot", "hocky", "semester", "semestername"}:
+                normalized_map[col] = "semester_name"
+            elif clean in {"ngaysinh", "dateofbirth", "dob"}:
+                normalized_map[col] = "date_of_birth"
+        if normalized_map:
+            df = df.rename(columns=normalized_map)
+        return df
+
     def _normalize_row(self, row) -> Dict[str, Any]:
         try:
             student_code = str(row.student_code).strip()
@@ -119,7 +157,17 @@ class ImportScoresUseCase:
 
             last_name = str(getattr(row, "last_name", "")).strip()
             first_name = str(getattr(row, "first_name", "")).strip()
+            full_name = str(getattr(row, "full_name", "")).strip()
+            if full_name and (not last_name or not first_name):
+                parts = full_name.split()
+                if len(parts) == 1:
+                    first_name = parts[0]
+                    last_name = ""
+                else:
+                    first_name = parts[-1]
+                    last_name = " ".join(parts[:-1])
             class_code = str(getattr(row, "class_code", "")).strip()
+            date_of_birth = self._parse_date_of_birth(getattr(row, "date_of_birth", None))
 
             gender_raw = str(getattr(row, "gender", "")).lower().strip()
             gender = "female" if "nữ" in gender_raw else "male"
@@ -145,14 +193,21 @@ class ImportScoresUseCase:
             )
             major_name = str(getattr(row, "major_name", "")).strip() or "Kế toán"
 
+            semester_raw = str(getattr(row, "semester_name", "")).strip()
             academic_year_raw = str(getattr(row, "academic_year", "")).strip()
             academic_year = academic_year_raw.replace(" ", "").replace("_", "").strip()
+            if not academic_year:
+                semester_year_match = re.search(r"(20\d{2})\s*-\s*(20\d{2})", semester_raw)
+                if semester_year_match:
+                    academic_year = (
+                        f"{semester_year_match.group(1)}-{semester_year_match.group(2)}"
+                    )
             if len(academic_year) == 8 and academic_year.isdigit():
                 academic_year = academic_year[:4] + "-" + academic_year[4:]
             if not academic_year:
-                academic_year = "2018-2019"
+                current_year = datetime.now().year
+                academic_year = f"{current_year}-{current_year + 1}"
 
-            semester_raw = str(getattr(row, "semester_name", "")).strip()
             if "_NH" in semester_raw:
                 semester_name = semester_raw.split("_NH")[0].replace(" ", "").strip()
             elif "NH" in semester_raw:
@@ -173,11 +228,10 @@ class ImportScoresUseCase:
 
             letter = str(getattr(row, "letter", "")).strip() or None
 
-            enrollment_year_str = (
-                academic_year.split("-")[0] if "-" in academic_year else "2018"
-            )
-            enrollment_year = (
-                int(enrollment_year_str) if enrollment_year_str.isdigit() else 2018
+            enrollment_year = self._extract_enrollment_year(
+                class_code=class_code,
+                student_code=student_code,
+                academic_year=academic_year,
             )
 
             return {
@@ -186,6 +240,7 @@ class ImportScoresUseCase:
                 "first_name": first_name,
                 "gender": gender,
                 "class_code": class_code,
+                "date_of_birth": date_of_birth,
                 "enrollment_year": enrollment_year,
                 "subject_name": subject_name,
                 "credits": credits,
@@ -200,6 +255,48 @@ class ImportScoresUseCase:
             }
         except Exception:
             return {}
+
+    def _extract_enrollment_year(
+        self, class_code: str, student_code: str, academic_year: str
+    ) -> int:
+        class_match = re.search(r"^\D*(\d{2})", class_code.strip())
+        if class_match:
+            yy = int(class_match.group(1))
+            if 18 <= yy <= 40:
+                return 2000 + yy
+
+        if "-" in academic_year:
+            start_year = academic_year.split("-")[0].strip()
+            if start_year.isdigit():
+                return int(start_year)
+
+        return datetime.now().year
+
+    def _parse_date_of_birth(self, value: Any) -> date | None:
+        if value is None or pd.isna(value):
+            return None
+        parsed = pd.to_datetime(value, errors="coerce", dayfirst=True)
+        if pd.isna(parsed):
+            return None
+        return parsed.date()
+
+    def _sync_enrollment_year_from_import(
+        self, imported_enrollment_year_by_student: dict[str, int]
+    ) -> None:
+        if not imported_enrollment_year_by_student:
+            return
+        for student_id, enrollment_year in imported_enrollment_year_by_student.items():
+            self.db.execute(
+                text("""
+                    UPDATE students
+                    SET enrollment_year = :enrollment_year
+                    WHERE id = :student_id
+                """),
+                {
+                    "student_id": student_id,
+                    "enrollment_year": enrollment_year,
+                },
+            )
 
     def _load_caches(self) -> Dict:
         return {
@@ -318,20 +415,22 @@ class ImportScoresUseCase:
         last: str,
         first: str,
         gender: str,
+        date_of_birth: date | None,
         class_id: UUID,
         enroll_year: int,
         cache: Dict,
     ) -> UUID:
-        if code in cache:
-            return cache[code]
         id_ = self.db.execute(
             text("""
-                INSERT INTO students (student_code, last_name, first_name, gender, class_id, enrollment_year)
-                VALUES (:code, :last, :first, :gender, :class_id, :year)
+                INSERT INTO students (
+                    student_code, last_name, first_name, gender, date_of_birth, class_id, enrollment_year
+                )
+                VALUES (:code, :last, :first, :gender, :date_of_birth, :class_id, :year)
                 ON CONFLICT (student_code) DO UPDATE
                 SET last_name = EXCLUDED.last_name,
                     first_name = EXCLUDED.first_name,
                     gender = EXCLUDED.gender,
+                    date_of_birth = COALESCE(EXCLUDED.date_of_birth, students.date_of_birth),
                     class_id = EXCLUDED.class_id,
                     enrollment_year = EXCLUDED.enrollment_year
                 RETURNING id
@@ -341,6 +440,7 @@ class ImportScoresUseCase:
                 "last": last,
                 "first": first,
                 "gender": gender,
+                "date_of_birth": date_of_birth,
                 "class_id": class_id,
                 "year": enroll_year,
             },

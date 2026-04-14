@@ -24,3 +24,6 @@ class UserRepository(ABC):
 
     @abstractmethod
     def update_password(self, user_id: str, new_password_hash: str) -> bool: ...
+
+    @abstractmethod
+    def update_status(self, user_id: str, is_active: bool) -> bool: ...
